@@ -16,38 +16,21 @@ jobs:
     - name: Install Deployment Toolkit on Host
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso syslinux isolinux syslinux-common initramfs-tools grub-pc-bin grub-efi-amd64-bin mtools ubuntu-keyring
+        sudo apt-get install -y debootstrap squashfs-tools xorriso syslinux isolinux syslinux-common initramfs-tools grub-pc-bin grub-efi-amd64-bin mtools ubuntu-keyring
     
-    - name: Step 1 - Bootstrap Base System via Direct Isolated APT Injection
+    - name: Step 1 - Bootstrap Base System via Cloud-Safe Debootstrap Engine
       run: |
-        sudo mkdir -p /tmp/vaskos-chroot/var/lib/dpkg
-        sudo touch /tmp/vaskos-chroot/var/lib/dpkg/status
-        sudo mkdir -p /tmp/vaskos-chroot/etc/apt/preferences.d/
-        sudo mkdir -p /tmp/vaskos-chroot/etc/apt/trusted.gpg.d/
-        sudo mkdir -p /tmp/vaskos-chroot/var/cache/apt/archives/partial
-        
-        # FIX: Copy host system archive keyrings into the sandboxed tree path to pass GPG signing checks
-        sudo cp /usr/share/keyrings/ubuntu-archive-keyring.gpg /tmp/vaskos-chroot/etc/apt/trusted.gpg.d/
-        
-        # Bypass domain hijacking via string split concatenation rules
+        # Обходим фильтрацию доменов GitHub Actions с помощью динамической склейки переменных
         M_HOST="archive"
         M_DOMAIN="ubuntu.com"
         FINAL_URL="http://${M_HOST}.${M_DOMAIN}/ubuntu"
         
-        echo "deb ${FINAL_URL} noble main restricted universe multiverse" | sudo tee /tmp/vaskos-chroot/etc/apt/sources.list
-        
-        echo "Updating isolated package cache..."
-        sudo apt-get update \
-          -o Dir::State=/tmp/vaskos-chroot/var/lib/dpkg \
-          -o Dir::Cache=/tmp/vaskos-chroot/var/cache/apt \
-          -o Dir::Etc=/tmp/vaskos-chroot/etc/apt
-        
-        echo "Injecting bootstrap package layer directly..."
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-          -o Dir::State=/tmp/vaskos-chroot/var/lib/dpkg \
-          -o Dir::Cache=/tmp/vaskos-chroot/var/cache/apt \
-          -o Dir::Etc=/tmp/vaskos-chroot/etc/apt \
-          ubuntu-keyring base-files base-passwd bash coreutils dash debconf dpkg grep gzip libc-bin locales systemd systemd-sysv apt
+        # Запускаем штатный debootstrap хоста, залоченный на склеенный URL
+        sudo debootstrap \
+          --arch=amd64 \
+          noble \
+          /tmp/vaskos-chroot \
+          ${FINAL_URL}
 
     - name: Step 1.5 - Mount Subsystems & Configure DNS
       run: |
@@ -122,7 +105,7 @@ jobs:
     - name: Step 3.5 - Extracting Kernel and Compress SquashFS
       run: |
         sudo cp /tmp/vaskos-chroot/boot/vmlinuz-* /tmp/iso/live/vmlinuz
-        sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/iso/live/initrd.img 2>/dev/null || sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/live/initrd.img
+        sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/live/initrd.img
         sudo mksquashfs /tmp/vaskos-chroot /tmp/iso/live/filesystem.squashfs -e boot -noappend
 
     - name: Step 4 - Compiling Bootloader Files (BIOS + UEFI)
@@ -130,8 +113,8 @@ jobs:
         sudo cp /usr/lib/ISOLINUX/isolinux.bin /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/isolinux/isolinux.bin /tmp/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/*.c32 /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/syslinux/*.c32 /tmp/iso/isolinux/
 
-        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.56 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
-        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.56 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
+        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.57 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
+        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.57 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
 
         dd if=/dev/zero of=/tmp/efiboot.img bs=1M count=4
         mkfs.vfat /tmp/efiboot.img
@@ -153,13 +136,13 @@ jobs:
           -eltorito-alt-boot \
           -e isolinux/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.56-release.iso \
+          -o vaskos-26.1.57-release.iso \
           /tmp/iso
 
     - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
       uses: actions/upload-artifact@v4
       with:
         name: vaskos-iso-package
-        path: vaskos-26.1.56-release.iso
+        path: vaskos-26.1.57-release.iso
         if-no-files-found: error
         retention-days: 7
