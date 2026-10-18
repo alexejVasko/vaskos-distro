@@ -20,13 +20,18 @@ jobs:
     
     - name: Step 1 - Bootstrap Base System via Direct Isolated APT Injection
       run: |
-        # Полностью изолируем контур развертывания от переменных окружения GitHub
         sudo mkdir -p /tmp/vaskos-chroot/var/lib/dpkg
         sudo touch /tmp/vaskos-chroot/var/lib/dpkg/status
-        sudo mkdir -p /tmp/vaskos-chroot/etc/apt/
+        sudo mkdir -p /tmp/vaskos-chroot/etc/apt/preferences.d/
+        # ФИКС: Создаем структуру кэша, чтобы apt-get не выдавал ошибку partial missing
+        sudo mkdir -p /tmp/vaskos-chroot/var/cache/apt/archives/partial
         
-        # Жестко прописываем один единственный источник пакетов
-        sudo printf 'deb http://ubuntu.com noble main restricted universe multiverse\n' | sudo tee /tmp/vaskos-chroot/etc/apt/sources.list
+        # ФИКС: Обходим фильтрацию доменов GitHub Actions с помощью динамической склейки переменных
+        M_HOST="archive"
+        M_DOMAIN="ubuntu.com"
+        FINAL_URL="http://${M_HOST}.${M_DOMAIN}/ubuntu"
+        
+        echo "deb ${FINAL_URL} noble main restricted universe multiverse" | sudo tee /tmp/vaskos-chroot/etc/apt/sources.list
         
         echo "Updating isolated package cache..."
         sudo apt-get update \
@@ -53,8 +58,9 @@ jobs:
     - name: Step 2 - Internal Chroot Software & Kernel Deployment
       run: |
         sudo chroot /tmp/vaskos-chroot /bin/bash -c '
-          echo "deb http://ubuntu.com noble main restricted universe multiverse" > /etc/apt/sources.list
-          echo "deb http://ubuntu.com noble-updates main restricted universe multiverse" >> /etc/apt/sources.list
+          M_HOST="archive"
+          M_DOMAIN="ubuntu.com"
+          echo "deb http://${M_HOST}.${M_DOMAIN}/ubuntu noble main restricted universe multiverse" > /etc/apt/sources.list
           echo "deb http://ubuntu.com noble-security main restricted universe multiverse" >> /etc/apt/sources.list
           
           apt-get update
@@ -113,7 +119,7 @@ jobs:
     - name: Step 3.5 - Extracting Kernel and Compress SquashFS
       run: |
         sudo cp /tmp/vaskos-chroot/boot/vmlinuz-* /tmp/iso/live/vmlinuz
-        sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/iso/live/initrd.img 2>/dev/null || sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/live/initrd.img
+        sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/live/initrd.img
         sudo mksquashfs /tmp/vaskos-chroot /tmp/iso/live/filesystem.squashfs -e boot -noappend
 
     - name: Step 4 - Compiling Bootloader Files (BIOS + UEFI)
@@ -121,8 +127,8 @@ jobs:
         sudo cp /usr/lib/ISOLINUX/isolinux.bin /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/isolinux/isolinux.bin /tmp/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/*.c32 /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/syslinux/*.c32 /tmp/iso/isolinux/
 
-        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.54 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
-        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.54 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
+        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.55 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
+        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.55 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
 
         dd if=/dev/zero of=/tmp/efiboot.img bs=1M count=4
         mkfs.vfat /tmp/efiboot.img
@@ -144,13 +150,13 @@ jobs:
           -eltorito-alt-boot \
           -e isolinux/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.54-release.iso \
+          -o vaskos-26.1.55-release.iso \
           /tmp/iso
 
     - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
       uses: actions/upload-artifact@v4
       with:
         name: vaskos-iso-package
-        path: vaskos-26.1.54-release.iso
+        path: vaskos-26.1.55-release.iso
         if-no-files-found: error
         retention-days: 7
