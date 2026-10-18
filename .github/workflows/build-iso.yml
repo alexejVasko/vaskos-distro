@@ -82,41 +82,20 @@ jobs:
     - name: Step 3 - Structuring Staging Directories
       run: |
         mkdir -p /tmp/iso/live /tmp/iso/isolinux /tmp/iso/boot/grub
+        sudo mkdir -p /tmp/vaskos-chroot/root/.idesktop
         
         if [ -f "wallpaper.jpg" ]; then
           sudo mkdir -p /tmp/vaskos-chroot/usr/share/backgrounds
           sudo cp wallpaper.jpg /tmp/vaskos-chroot/usr/share/backgrounds/vaskos-bg.jpg
         fi
 
-        sudo bash -c '"'"'cat << "EOF" > /tmp/vaskos-chroot/root/.idesktop/writer.lnk
-        table Link
-          Caption: LibreOffice Writer
-          Command: libreoffice --writer
-          Icon: /usr/share/icons/hicolor/48x48/apps/libreoffice-writer.png
-          X: 50
-          Y: 50
-        end
-        EOF'"'"'
+        # FIXED INJECTION: Uses standard printf mapping to entirely avoid sub-shell character escapes
+        sudo printf 'table Link\n  Caption: LibreOffice Writer\n  Command: libreoffice --writer\n  Icon: /usr/share/icons/hicolor/48x48/apps/libreoffice-writer.png\n  X: 50\n  Y: 50\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/writer.lnk
+        sudo printf 'table Link\n  Caption: PDF Reader (Zathura)\n  Command: zathura\n  Icon: /usr/share/icons/hicolor/48x48/apps/xterm.png\n  X: 50\n  Y: 150\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/zathura.lnk
+        
+        sudo printf 'table Config\n  FontName: sans\n  FontSize: 11\n  FontColor: #ffffff\n  Appearance: v2\n  Refresh: 2000\n  Width: 48\n  Height: 48\n  FillSpace: true\n  Shadow: true\n  Lock: false\nend\n' | sudo tee /tmp/vaskos-chroot/root/.ideskrc
 
-        sudo bash -c '"'"'cat << "EOF" > /tmp/vaskos-chroot/root/.idesktop/zathura.lnk
-        table Link
-          Caption: PDF Reader (Zathura)
-          Command: zathura
-          Icon: /usr/share/icons/hicolor/48x48/apps/xterm.png
-          X: 50
-          Y: 150
-        end
-        EOF'"'"'
-
-        sudo bash -c '"'"'cat << "EOF" > /tmp/vaskos-chroot/root/.xinitrc
-        #!/bin/sh
-        feh --bg-scale /usr/share/backgrounds/vaskos-bg.jpg &
-        pipewire &
-        /usr/libexec/bluetooth/bluetoothd &
-        devmon --exec-on-drive "notify-send '\''Диск подключен'\''" &
-        idesk &
-        exec icewm-session
-        EOF'"'"'
+        sudo printf '#!/bin/sh\nfeh --bg-scale /usr/share/backgrounds/vaskos-bg.jpg &\npipewire &\n/usr/libexec/bluetooth/bluetoothd &\ndevmon --exec-on-drive "notify-send '\''Диск подключен'\''" &\nidesk &\nexec icewm-session\n' | sudo tee /tmp/vaskos-chroot/root/.xinitrc
         sudo chmod +x /tmp/vaskos-chroot/root/.xinitrc
 
     - name: Step 3.5 - Extracting Kernel and Compress SquashFS
@@ -130,25 +109,8 @@ jobs:
         sudo cp /usr/lib/ISOLINUX/isolinux.bin /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/isolinux/isolinux.bin /tmp/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/*.c32 /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/syslinux/*.c32 /tmp/iso/isolinux/
 
-        sudo bash -c '"'"'cat << "EOF" > /tmp/iso/isolinux/isolinux.cfg
-        ui menu.c32
-        prompt 0
-        timeout 50
-        label live
-          menu label Start VaskOS v26.1.49 (Cloud Actions Persistent Mode)
-          menu default
-          kernel /live/vmlinuz
-          append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8
-        EOF'"'"'
-
-        sudo bash -c '"'"'cat << "EOF" > /tmp/iso/boot/grub/grub.cfg
-        set default="0"
-        set timeout=5
-        menuentry "Start VaskOS v26.1.49 (Cloud Actions UEFI Mode)" {
-            linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---
-            initrd /live/initrd.img
-        }
-        EOF'"'"'
+        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.50 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
+        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.50 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
 
         dd if=/dev/zero of=/tmp/efiboot.img bs=1M count=4
         mkfs.vfat /tmp/efiboot.img
@@ -170,13 +132,13 @@ jobs:
           -eltorito-alt-boot \
           -e isolinux/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.49-release.iso \
+          -o vaskos-26.1.50-release.iso \
           /tmp/iso
 
     - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
       uses: actions/upload-artifact@v4
       with:
         name: vaskos-iso-package
-        path: vaskos-26.1.49-release.iso
+        path: vaskos-26.1.50-release.iso
         if-no-files-found: error
         retention-days: 7
