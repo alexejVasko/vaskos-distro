@@ -20,15 +20,14 @@ jobs:
     
     - name: Step 1 - Bootstrap Base System via MMdebstrap
       run: |
-        # ФИКС: Добавляем --no-resolve-alternative и префикс mirror: для полной блокировки http://ubuntu.com
+        # ФИКС: Передаем пустую строку вместо noble, полностью изолируя APT от встроенных макросов http://ubuntu.com
         sudo mmdebstrap \
           --arch=amd64 \
           --variant=standard \
-          --no-resolve-alternative \
           --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
-          noble \
+          "" \
           /tmp/vaskos-chroot \
-          "mirror:http://ubuntu.com"
+          "deb http://ubuntu.com noble main restricted universe multiverse"
 
     - name: Step 1.5 - Mount Subsystems & Configure DNS
       run: |
@@ -110,8 +109,8 @@ jobs:
         sudo cp /usr/lib/ISOLINUX/isolinux.bin /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/isolinux/isolinux.bin /tmp/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/*.c32 /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/syslinux/*.c32 /tmp/iso/isolinux/
 
-        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.52 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
-        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.52 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
+        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.53 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
+        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.53 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
 
         dd if=/dev/zero of=/tmp/efiboot.img bs=1M count=4
         mkfs.vfat /tmp/efiboot.img
@@ -133,13 +132,13 @@ jobs:
           -eltorito-alt-boot \
           -e isolinux/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.52-release.iso \
+          -o vaskos-26.1.53-release.iso \
           /tmp/iso
 
     - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
       uses: actions/upload-artifact@v4
       with:
         name: vaskos-iso-package
-        path: vaskos-26.1.52-release.iso
+        path: vaskos-26.1.53-release.iso
         if-no-files-found: error
         retention-days: 7
