@@ -16,14 +16,14 @@ jobs:
     - name: Install Deployment Toolkit on Host
       run: |
         sudo apt-get update
-        sudo apt-get install -y mmdebstrap squashfs-tools xorriso syslinux isolinux syslinux-common initramfs-tools grub-pc-bin grub-efi-amd64-bin mtools
+        sudo apt-get install -y mmdebstrap squashfs-tools xorriso syslinux isolinux syslinux-common initramfs-tools grub-pc-bin grub-efi-amd64-bin mtools ubuntu-keyring
     
     - name: Step 1 - Bootstrap Base System via MMdebstrap
       run: |
+        # ФИКС: Убираем принудительный жесткий путь к keyring и добавляем --keyring=для автоматического подхвата из системы
         sudo mmdebstrap \
           --arch=amd64 \
           --variant=standard \
-          --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
           noble \
           /tmp/vaskos-chroot \
           "deb http://ubuntu.com noble main restricted universe multiverse"
@@ -89,7 +89,6 @@ jobs:
           sudo cp wallpaper.jpg /tmp/vaskos-chroot/usr/share/backgrounds/vaskos-bg.jpg
         fi
 
-        # FIXED INJECTION: Uses standard printf mapping to entirely avoid sub-shell character escapes
         sudo printf 'table Link\n  Caption: LibreOffice Writer\n  Command: libreoffice --writer\n  Icon: /usr/share/icons/hicolor/48x48/apps/libreoffice-writer.png\n  X: 50\n  Y: 50\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/writer.lnk
         sudo printf 'table Link\n  Caption: PDF Reader (Zathura)\n  Command: zathura\n  Icon: /usr/share/icons/hicolor/48x48/apps/xterm.png\n  X: 50\n  Y: 150\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/zathura.lnk
         
@@ -109,8 +108,8 @@ jobs:
         sudo cp /usr/lib/ISOLINUX/isolinux.bin /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/isolinux/isolinux.bin /tmp/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/*.c32 /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/syslinux/*.c32 /tmp/iso/isolinux/
 
-        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.50 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
-        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.50 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
+        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.51 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
+        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.51 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
 
         dd if=/dev/zero of=/tmp/efiboot.img bs=1M count=4
         mkfs.vfat /tmp/efiboot.img
@@ -132,13 +131,13 @@ jobs:
           -eltorito-alt-boot \
           -e isolinux/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.50-release.iso \
+          -o vaskos-26.1.51-release.iso \
           /tmp/iso
 
     - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
       uses: actions/upload-artifact@v4
       with:
         name: vaskos-iso-package
-        path: vaskos-26.1.50-release.iso
+        path: vaskos-26.1.51-release.iso
         if-no-files-found: error
         retention-days: 7
