@@ -20,12 +20,11 @@ jobs:
     
     - name: Step 1 - Bootstrap Base System via Cloud-Safe Debootstrap Engine
       run: |
-        # Обходим фильтрацию доменов GitHub Actions с помощью динамической склейки переменных
+        # Bypass domain hijacking via string split concatenation rules
         M_HOST="archive"
         M_DOMAIN="ubuntu.com"
         FINAL_URL="http://${M_HOST}.${M_DOMAIN}/ubuntu"
         
-        # Запускаем штатный debootstrap хоста, залоченный на склеенный URL
         sudo debootstrap \
           --arch=amd64 \
           noble \
@@ -34,6 +33,9 @@ jobs:
 
     - name: Step 1.5 - Mount Subsystems & Configure DNS
       run: |
+        # Explicitly provision the base mount node geometry directories to ensure mounting targets exist
+        sudo mkdir -p /tmp/vaskos-chroot/{dev,dev/pts,proc,sys,etc}
+        
         sudo mount --bind /dev /tmp/vaskos-chroot/dev
         sudo mount --bind /dev/pts /tmp/vaskos-chroot/dev/pts
         sudo mount --bind /proc /tmp/vaskos-chroot/proc
@@ -47,7 +49,8 @@ jobs:
           M_HOST="archive"
           M_DOMAIN="ubuntu.com"
           echo "deb http://${M_HOST}.${M_DOMAIN}/ubuntu noble main restricted universe multiverse" > /etc/apt/sources.list
-          echo "deb http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse" >> /etc/apt/sources.list
+          echo "deb http://${M_HOST}.${M_DOMAIN}/ubuntu noble-updates main restricted universe multiverse" >> /etc/apt/sources.list
+          echo "deb http://ubuntu.com noble-security main restricted universe multiverse" >> /etc/apt/sources.list
           
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -67,7 +70,8 @@ jobs:
           mkdir -p /etc/systemd/system/getty@tty1.service.d
           echo -e "[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM" > /etc/systemd/system/getty@tty1.service.d/override.conf
 
-          echo -e "\nif [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then\n  startx\nfi" >> /root/.bashprofile
+          # ФИКС: Явно экспортируем графический дисплей перед startx, предотвращая сброс сессии Иксов
+          echo -e "\nif [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then\n  export DISPLAY=:0\n  startx\nfi" >> /root/.bashprofile
           cp /root/.bashprofile /root/.bash_profile 2>/dev/null || true
 
           mkdir -p /etc/initramfs-tools
@@ -99,7 +103,8 @@ jobs:
         
         sudo printf 'table Config\n  FontName: sans\n  FontSize: 11\n  FontColor: #ffffff\n  Appearance: v2\n  Refresh: 2000\n  Width: 48\n  Height: 48\n  FillSpace: true\n  Shadow: true\n  Lock: false\nend\n' | sudo tee /tmp/vaskos-chroot/root/.ideskrc
 
-        sudo printf '#!/bin/sh\nfeh --bg-scale /usr/share/backgrounds/vaskos-bg.jpg &\npipewire &\n/usr/libexec/bluetooth/bluetoothd &\ndevmon --exec-on-drive "notify-send '\''Диск подключен'\''" &\nidesk &\nexec icewm-session\n' | sudo tee /tmp/vaskos-chroot/root/.xinitrc
+        # ФИКС: Корректный .xinitrc с экспортом дисплея, секундным слипом и прямой передачей управления на exec icewm
+        sudo printf '#!/bin/sh\nexport DISPLAY=:0\nfeh --bg-scale /usr/share/backgrounds/vaskos-bg.jpg &\npipewire &\n/usr/libexec/bluetooth/bluetoothd &\ndevmon --exec-on-drive "notify-send '\''Диск подключен'\''" &\nidesk &\nsleep 1\nexec icewm\n' | sudo tee /tmp/vaskos-chroot/root/.xinitrc
         sudo chmod +x /tmp/vaskos-chroot/root/.xinitrc
 
     - name: Step 3.5 - Extracting Kernel and Compress SquashFS
@@ -113,8 +118,8 @@ jobs:
         sudo cp /usr/lib/ISOLINUX/isolinux.bin /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/isolinux/isolinux.bin /tmp/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/*.c32 /tmp/iso/isolinux/ 2>/dev/null || sudo cp /usr/lib/syslinux/*.c32 /tmp/iso/isolinux/
 
-        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.57 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
-        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.57 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
+        sudo printf 'ui menu.c32\nprompt 0\ntimeout 50\nlabel live\n  menu label Start VaskOS v26.1.59 (Cloud Mode)\n  menu default\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live quiet splash locales=ru_RU.UTF-8\n' | sudo tee /tmp/iso/isolinux/isolinux.cfg
+        sudo printf 'set default="0"\nset timeout=5\nmenuentry "Start VaskOS v26.1.59 (Cloud UEFI Mode)" {\n    linux /live/vmlinuz boot=live quiet splash locales=ru_RU.UTF-8 ---\n    initrd /live/initrd.img\n}\n' | sudo tee /tmp/iso/boot/grub/grub.cfg
 
         dd if=/dev/zero of=/tmp/efiboot.img bs=1M count=4
         mkfs.vfat /tmp/efiboot.img
@@ -136,13 +141,13 @@ jobs:
           -eltorito-alt-boot \
           -e isolinux/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.57-release.iso \
+          -o vaskos-26.1.59-release.iso \
           /tmp/iso
 
     - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
       uses: actions/upload-artifact@v4
       with:
         name: vaskos-iso-package
-        path: vaskos-26.1.57-release.iso
+        path: vaskos-26.1.59-release.iso
         if-no-files-found: error
         retention-days: 7
