@@ -52,23 +52,32 @@ jobs:
           
           apt-get update
           
+          # Сначала ставим базовый слой управления пакетами и утилиты развертывания
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ubuntu-minimal systemd systemd-sysv apt locales kmod sudo
+            ubuntu-minimal systemd systemd-sysv apt locales kmod sudo initramfs-tools
 
+          # ИСПРАВЛЕНИЕ: Ставим ядро БЕЗ флага --no-install-recommends, чтобы подтянулись все модули загрузки,
+          # а также ставим сетевые пакеты, русификацию и PipeWire
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            linux-image-generic live-boot
+            
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            linux-image-generic live-boot nic-firmware firmware-sof-signed alsa-utils pipewire pipewire-audio-client-libraries \
+            nic-firmware firmware-sof-signed alsa-utils pipewire pipewire-audio-client-libraries \
             wpasupplicant network-manager systemd-resolved udevil eject language-pack-ru language-pack-uk
 
+          # Устанавливаем графическое окружение IceWM и легкий софт
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             xserver-xorg-core xserver-xorg-video-all xserver-xorg-input-all xinit icewm idesk hicolor-icon-theme feh xterm zathura zathura-pdf-poppler
 
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             abiword gnumeric
 
+          # Настройка локализации системы
           echo -e "en_US.UTF-8 UTF-8\nru_RU.UTF-8 UTF-8\nuk_UA.UTF-8 UTF-8" > /etc/locale.gen
           locale-gen
           echo -e "LANG=ru_RU.UTF-8\nLANGUAGE=\"ru_RU:ru:uk_UA:uk\"" > /etc/default/locale
 
+          # Сеть и автологин в консоль
           systemctl enable systemd-resolved
           ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
@@ -78,11 +87,13 @@ jobs:
           echo -e "\nif [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then\n  export DISPLAY=:0\n  startx\nfi" >> /root/.bashprofile
           cp /root/.bashprofile /root/.bash_profile 2>/dev/null || true
 
+          # Сборка initramfs со сжатием GZIP для Live-режима
           mkdir -p /etc/initramfs-tools
           echo "BOOT=live" >> /etc/initramfs-tools/initramfs.conf
           echo "COMPRESS=gzip" >> /etc/initramfs-tools/initramfs.conf
           update-initramfs -u -k all
 
+          # Агрессивная очистка от кэшей и временных файлов
           apt-get clean
           rm -rf /usr/share/doc/* /usr/share/man/* /var/lib/apt/lists/*
         '
