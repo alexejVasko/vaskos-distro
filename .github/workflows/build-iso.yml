@@ -24,7 +24,6 @@ jobs:
         M_DOMAIN="ubuntu.com"
         FINAL_URL="http://${M_HOST}.${M_DOMAIN}/ubuntu"
         
-        # Переключаем вариант на minbase для максимальной экономии места
         sudo debootstrap \
           --arch=amd64 \
           --variant=minbase \
@@ -51,32 +50,25 @@ jobs:
           echo "deb http://${M_HOST}.${M_DOMAIN}/ubuntu noble main restricted universe multiverse" > /etc/apt/sources.list
           echo "deb http://ubuntu.com noble-security main restricted universe multiverse" >> /etc/apt/sources.list
           
-          # Очищаем кэш и отключаем установку рекомендуемого мусора
           apt-get update
           
-          # Устанавливаем базовый системный слой
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             ubuntu-minimal systemd systemd-sysv apt locales kmod sudo
 
-          # Устанавливаем ядро, базовую сетевую прошивку (вместо linux-firmware) и PipeWire
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             linux-image-generic live-boot nic-firmware firmware-sof-signed alsa-utils pipewire pipewire-audio-client-libraries \
             wpasupplicant network-manager systemd-resolved udevil eject language-pack-ru language-pack-uk
 
-          # Устанавливаем ультралегкую графику Иксов, IceWM и быстрый текстовый терминал
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             xserver-xorg-core xserver-xorg-video-all xserver-xorg-input-all xinit icewm idesk hicolor-icon-theme feh xterm zathura zathura-pdf-poppler
 
-          # ФИКС: Установка легковесного офиса (AbiWord + Gnumeric) вместо LibreOffice
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             abiword gnumeric
 
-          # Настройка локализации
           echo -e "en_US.UTF-8 UTF-8\nru_RU.UTF-8 UTF-8\nuk_UA.UTF-8 UTF-8" > /etc/locale.gen
           locale-gen
           echo -e "LANG=ru_RU.UTF-8\nLANGUAGE=\"ru_RU:ru:uk_UA:uk\"" > /etc/default/locale
 
-          # Фикс сети и автологина
           systemctl enable systemd-resolved
           ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
@@ -86,13 +78,11 @@ jobs:
           echo -e "\nif [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then\n  export DISPLAY=:0\n  startx\nfi" >> /root/.bashprofile
           cp /root/.bashprofile /root/.bash_profile 2>/dev/null || true
 
-          # Сборка initramfs со сжатием GZIP
           mkdir -p /etc/initramfs-tools
           echo "BOOT=live" >> /etc/initramfs-tools/initramfs.conf
           echo "COMPRESS=gzip" >> /etc/initramfs-tools/initramfs.conf
           update-initramfs -u -k all
 
-          # Агрессивная очистка от мусора, кэшей и документации внутри образа
           apt-get clean
           rm -rf /usr/share/doc/* /usr/share/man/* /var/lib/apt/lists/*
         '
@@ -114,7 +104,6 @@ jobs:
           sudo cp wallpaper.jpg /tmp/vaskos-chroot/usr/share/backgrounds/vaskos-bg.jpg
         fi
 
-        # Меняем ярлыки на рабочем столе на новые легковесные программы
         sudo printf 'table Link\n  Caption: AbiWord Текст\n  Command: abiword\n  Icon: /usr/share/icons/hicolor/48x48/apps/xterm.png\n  X: 50\n  Y: 50\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/abiword.lnk
         sudo printf 'table Link\n  Caption: Gnumeric Таблицы\n  Command: gnumeric\n  Icon: /usr/share/icons/hicolor/48x48/apps/xterm.png\n  X: 50\n  Y: 150\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/gnumeric.lnk
         sudo printf 'table Link\n  Caption: PDF Читалка\n  Command: zathura\n  Icon: /usr/share/icons/hicolor/48x48/apps/xterm.png\n  X: 50\n  Y: 250\nend\n' | sudo tee /tmp/vaskos-chroot/root/.idesktop/zathura.lnk
@@ -128,7 +117,6 @@ jobs:
       run: |
         sudo cp /tmp/vaskos-chroot/boot/vmlinuz-* /tmp/iso/live/vmlinuz
         sudo cp /tmp/vaskos-chroot/boot/initrd.img-* /tmp/iso/live/initrd.img
-        # Сжатие с максимальным упором на экономию размера файловой системы Live-ОС
         sudo mksquashfs /tmp/vaskos-chroot /tmp/iso/live/filesystem.squashfs -e boot -noappend
 
     - name: Step 4 - Compiling Bootloader Files (BIOS + UEFI)
@@ -143,29 +131,27 @@ jobs:
         mkfs.vfat /tmp/efiboot.img
         mmd -i /tmp/efiboot.img ::/EFI ::/EFI/BOOT
         grub-mkimage -o /tmp/grubx64.efi -p /boot/grub -O x86_64-efi fat iso9660 part_gpt part_msdos normal boot linux configfile loopback chain search efi_gop efi_uga gfxterm minicmd
+        
         mcopy -i /tmp/efiboot.img /tmp/grubx64.efi ::/EFI/BOOT/BOOTX64.EFI
-        sudo mv /tmp/efiboot.img /tmp/iso/isolinux/efiboot.img
+        sudo cp /tmp/efiboot.img /tmp/iso/boot/efiboot.img
 
-    - name: Step 5 - Compile Master Hybrid ISO via Xorriso
+    - name: Step 5 - Generate Hybrid ISO Image via Xorriso
       run: |
-        sudo xorriso -as mkisofs \
-          -iso-level 3 \
-          -full-iso9660-filenames \
-          -R -l -J -joliet-long \
+        sudo xorriso -as mkisofs -r \
           -V "VaskOS_Slim" \
+          -o ./vaskos-slim-v26.1.60.iso \
           -b isolinux/isolinux.bin \
           -c isolinux/boot.cat \
           -no-emul-boot -boot-load-size 4 -boot-info-table \
           -eltorito-alt-boot \
-          -e isolinux/efiboot.img \
+          -e boot/efiboot.img \
           -no-emul-boot \
-          -o vaskos-26.1.60-slim.iso \
+          -isohybrid-gpt-basdat \
           /tmp/iso
 
-    - name: Step 6 - Upload Completed ISO to GitHub Artifacts Storage
+    - name: Step 6 - Upload Compiled ISO Image Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: vaskos-slim-package
-        path: vaskos-26.1.60-slim.iso
+        name: vaskos-slim-iso-package
+        path: ./vaskos-slim-v26.1.60.iso
         if-no-files-found: error
-        retention-days: 7
